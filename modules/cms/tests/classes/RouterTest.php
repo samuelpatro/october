@@ -28,37 +28,45 @@ class RouterTest extends TestCase
         return $property;
     }
 
-    public function testUrlListCaching()
+    public function testRouteMapCaching()
     {
         $router = new Router(self::$theme);
-        $method = self::getMethod('getUrlRouteCache');
-        $urlList = [];
+        $method = self::getMethod('getMapRouteCache');
 
         /*
-         * The first time the page should be loaded from the disk.
+         * The first time the map should be built from the disk.
          */
-        $result = $method->invokeArgs($router, ['/', &$urlList]);
-        $this->assertNull($result);
+        $router->clearCache();
+        $this->assertNull($method->invoke($router));
 
         /*
-         * Resolve the page to initialize the cache
+         * Resolve a page to initialize the cache
          */
         $page = $router->findByUrl('/');
         $this->assertNotEmpty($page);
         $this->assertEquals('index.htm', $page->getFileName());
 
         /*
-         * The second time the page should be loaded from the cache.
+         * The route map is cached, visited URLs are not cached individually
          */
-        $result = $method->invokeArgs($router, ['/', &$urlList]);
-        $this->assertEquals('index.htm', $result);
+        $this->assertIsArray($method->invoke($router));
 
         /*
-         * Clear the cache
+         * A fresh router resolves from the cached map
+         */
+        $router = new Router(self::$theme);
+        $page = $router->findByUrl('/');
+        $this->assertNotEmpty($page);
+        $this->assertEquals('index.htm', $page->getFileName());
+
+        /*
+         * Clearing the cache still resolves pages
          */
         $router->clearCache();
-        $result = $method->invokeArgs($router, ['/', &$urlList]);
-        $this->assertNull($result);
+        $this->assertNull($method->invoke($router));
+        $page = $router->findByUrl('/');
+        $this->assertNotEmpty($page);
+        $this->assertEquals('index.htm', $page->getFileName());
     }
 
     public function testFindPageByUrl()

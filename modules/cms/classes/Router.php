@@ -112,36 +112,21 @@ class Router
         }
 
         for ($pass = 1; $pass <= 2; $pass++) {
-            $fileName = null;
-            $urlList = [];
-
-            $cacheable = Config::get('cms.enable_route_cache');
-            if ($cacheable) {
-                $fileName = $this->getUrlRouteCache($url, $urlList);
-                if (is_array($fileName)) {
-                    [$fileName, $this->parameters] = $fileName;
-                }
-            }
-
-            // Find the page by URL and cache the route
+            // Find the page by URL, matching is compiled and bounded by the
+            // number of pages, visited URLs are not cached individually
             //
-            if (!$fileName) {
-                $router = $this->getRouterObject();
-                if ($router->match($url)) {
-                    $this->parameters = $router->getParameters();
-                    $fileName = $router->matchedRoute();
-
-                    if ($cacheable) {
-                        $this->putUrlRouteCache($fileName, $url, $urlList);
-                    }
-                }
+            $fileName = null;
+            $router = $this->getRouterObject();
+            if ($router->match($url)) {
+                $this->parameters = $router->getParameters();
+                $fileName = $router->matchedRoute();
             }
 
             // Return the page
             //
             if ($fileName) {
                 if (($page = Page::loadCached($this->theme, $fileName)) === null) {
-                    // If the page was not found on the disk, clear the URL cache
+                    // If the page was not found on the disk, clear the route cache
                     // and repeat the routing process.
                     if ($pass === 1) {
                         $this->clearCache();
@@ -285,7 +270,11 @@ class Router
     public function clearCache()
     {
         Cache::forget($this->getMapRouteCacheKey());
-        Cache::forget($this->getUrlRouteCacheKey());
+
+        // Purge the URL list cache used by previous versions
+        Cache::forget($this->getCacheKey('cms-url-list'));
+
+        $this->routerObj = null;
     }
 
     /**
@@ -348,62 +337,6 @@ class Router
         }
 
         return $unserialized;
-    }
-
-    /**
-     * getUrlRouteCacheKey returns the cache key name for the URL list.
-     * @return string
-     */
-    protected function getUrlRouteCacheKey()
-    {
-        return $this->getCacheKey('cms-url-list');
-    }
-
-    /**
-     * getUrlRouteCache tries to load a page file name corresponding to a specified URL
-     * from the cache. Working with the URL list loaded from the cache. Returns the page
-     * file name if the URL exists in the cache. Otherwise returns null.
-     * @param string $url
-     * @param array &$urlList
-     * @return mixed
-     */
-    protected function getUrlRouteCache($url, &$urlList)
-    {
-        $key = $this->getUrlRouteCacheKey();
-        $urlList = Cache::get($key, false);
-
-        if (!$urlList) {
-            return null;
-        }
-
-        $urlList = @unserialize(@base64_decode($urlList), ['allowed_classes' => false]);
-        if (!is_array($urlList)) {
-            return null;
-        }
-
-        return $urlList[$url] ?? null;
-    }
-
-    /**
-     * putUrlRouteCache stored in cache
-     * @param string $url
-     * @param array $urlList
-     */
-    protected function putUrlRouteCache($fileName, $url, $urlList)
-    {
-        if (!$urlList || !is_array($urlList)) {
-            $urlList = [];
-        }
-
-        $urlList[$url] = !empty($this->parameters)
-            ? [$fileName, $this->parameters]
-            : $fileName;
-
-        Cache::put(
-            $this->getUrlRouteCacheKey(),
-            base64_encode(serialize($urlList)),
-            Date::now()->addMinutes(Config::get('cms.url_cache_ttl', 60))
-        );
     }
 
     /**
